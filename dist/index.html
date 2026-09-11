@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>TERRITORY RUSH – Claim. Expand. Conquer.</title>
+
+  <script type="module" crossorigin src="/assets/index-CIX3EvdV.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DeKtSAM1.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Main Game Viewport Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- =========================================================
+         1. CREATIVE MAIN MENU DASHBOARD: TERRITORY RUSH
+         ========================================================= -->
+    <div id="mainMenuScreen">
+      <!-- Top Creative Dashboard Header -->
+      <div class="menu-top-bar">
+        <div class="dash-stat-pill">
+          <span style="font-size: 1.2rem;">🪙</span>
+          <span id="dashCoins" style="font-weight: 900; color: #f5b018;">500</span>
+        </div>
+
+        <!-- 3D TERRITORY RUSH Game Logo -->
+        <div class="menu-top-logo">
+          <div class="logo-3d">
+            TERRITORY <span style="color: #f5b018;">RUSH</span>
+            <span class="logo-badge">.io</span>
+          </div>
+          <div class="dash-tagline">CLAIM. EXPAND. CONQUER.</div>
+        </div>
+
+        <div class="dash-stat-pill">
+          <span style="font-size: 1rem; color: #38c172; font-weight: 900;">⭐ LVL <span id="dashLevel">1</span></span>
+        </div>
+      </div>
+
+      <!-- Center Stage: 3D Rotating Character on Pedestal -->
+      <div class="menu-center-stage">
+        <div class="pedestal-glow"></div>
+        <canvas id="menuPreviewCanvas" width="260" height="260"></canvas>
+
+        <!-- Booster Bubble: START x3 faster -->
+        <div id="btnStartBooster" class="bubble-booster" title="Start with speed boost">
+          <span class="b-sub">SPEED</span>
+          <span class="b-mult">RUSH</span>
+          <span class="b-speed">BOOST</span>
+          <span class="b-icon">⚡</span>
+        </div>
+
+        <!-- Trophy Bubble: Score to Unlock Skins -->
+        <div id="btnOpenSkins" class="bubble-skins-btn" title="Unlock skins by scoring">
+          <div class="skins-icon-circle">🏆</div>
+          <span class="skins-btn-label">Unlock Skins!</span>
+        </div>
+      </div>
+
+      <!-- Creative Game Mode Selector Chips -->
+      <div class="dash-mode-chips">
+        <button class="mode-chip active" data-mode="CLASSIC">👑 CLASSIC</button>
+        <button class="mode-chip" data-mode="CHAOS">🔥 CHAOS</button>
+        <button class="mode-chip" data-mode="TIME_RUSH">⏱️ TIME RUSH</button>
+      </div>
+
+      <!-- Bottom Bar: Big Yellow Play Button & Pseudo Input -->
+      <div class="menu-bottom-bar">
+        <button id="btnMenuPlay" class="btn-play-yellow" title="Play Game">
+          <div class="play-arrow-triangle"></div>
+        </button>
+
+        <div class="menu-pseudo-wrap">
+          <span class="pseudo-label">Player Tag</span>
+          <input type="text" id="playerPseudoInput" class="pseudo-input-pill" value="Player" maxlength="12" />
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================================================
+         2. SKIN SELECTION SCREEN (SCORE & CHALLENGE UNLOCKS)
+         ========================================================= -->
+    <div id="skinSelectionScreen" class="screen-overlay hidden">
+      <div class="menu-top-logo" style="margin-top: 5px;">
+        <div class="logo-3d" style="font-size: 2.5rem;">
+          TERRITORY <span style="color: #f5b018;">RUSH</span>
+          <span class="logo-badge" style="font-size: 1.1rem; padding: 1px 10px;">SKINS</span>
+        </div>
+      </div>
+
+      <!-- Horizontal 3D Skin Carousel -->
+      <div id="skinCarousel" class="carousel-container"></div>
+
+      <!-- Bottom Action Buttons: BACK and SELECT -->
+      <div class="skin-actions-bar">
+        <button id="btnSkinBack" class="btn-skin-back">BACK</button>
+        <button id="btnSkinSelect" class="btn-skin-select">SELECT</button>
+      </div>
+    </div>
+
+    <!-- =========================================================
+         3. IN-GAME HUD
+         ========================================================= -->
+    <div id="hud" style="display: none;">
+      <div class="hud-top">
+        <div class="hud-left-panel">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="territory-progress-pill">
+              <div id="hudTerritoryFill" class="territory-fill-bar"></div>
+              <span id="hudTerritory" class="territory-percent-text">0.00%</span>
+            </div>
+            <span id="hudBest" class="best-percent-text">Best 0.4%</span>
+          </div>
+          <div class="kills-pill">
+            <div class="skull-badge">💀</div>
+            <span id="hudKills">x0</span>
+          </div>
+        </div>
+
+        <div id="hudCenterTip" class="hud-center-tip">
+          <div class="tip-icon-anim"></div>
+          <span class="tip-text">Close a color loop to<br>expand your sector</span>
+        </div>
+
+        <div class="hud-right-panel">
+          <div class="hud-top-actions">
+            <button id="btnAudioToggle" class="hud-btn" title="Toggle Sound">🔊</button>
+            <button id="btnPause" class="hud-btn" title="Exit">✕</button>
+          </div>
+          <div id="leaderboardList" style="display: flex; flex-direction: column; gap: 5px;"></div>
+        </div>
+      </div>
+
+      <div id="virtualJoystick">
+        <div id="joystickKnob"></div>
+      </div>
+    </div>
+
+    <!-- Pause Dialog Modal -->
+    <div id="pauseModal" class="screen-overlay hidden">
+      <div class="io-card">
+        <h2 class="io-title" style="font-size: 2.2rem;">GAME PAUSED</h2>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <button id="btnResume" class="io-btn success">RESUME</button>
+          <button id="btnRestart" class="io-btn secondary">RESTART MATCH</button>
+          <button id="btnPauseExit" class="io-btn danger">MAIN MENU</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameOverModal" class="screen-overlay hidden">
+      <div class="io-card" style="max-width: 440px;">
+        <h2 class="io-title" style="color: #ef4444; font-size: 2.4rem;">ELIMINATED!</h2>
+        <p id="gameOverReason" style="color: #64748b; margin-top: -10px;">Trail was cut by an opponent.</p>
+
+        <div style="background: #f8fafc; border-radius: 20px; padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; text-align: left;">
+          <div><span style="font-size: 0.75rem; font-weight: 800; color: #94a3b8;">FINAL SCORE</span><div id="goScore" style="font-size: 1.3rem; font-weight: 900; color: #d97706;">0</div></div>
+          <div><span style="font-size: 0.75rem; font-weight: 800; color: #94a3b8;">TERRITORY</span><div id="goTerritory" style="font-size: 1.3rem; font-weight: 900; color: #3b82f6;">0.0%</div></div>
+          <div><span style="font-size: 0.75rem; font-weight: 800; color: #94a3b8;">FINAL RANK</span><div id="goRank" style="font-size: 1.3rem; font-weight: 900; color: #1e293b;">#1</div></div>
+          <div><span style="font-size: 0.75rem; font-weight: 800; color: #94a3b8;">ELIMINATIONS</span><div id="goKills" style="font-size: 1.3rem; font-weight: 900; color: #ef4444;">0</div></div>
+        </div>
+
+        <div style="display: flex; gap: 12px; justify-content: center; margin-top: 10px;">
+          <button id="btnGoPlayAgain" class="io-btn success" style="flex: 1;">PLAY AGAIN</button>
+          <button id="btnGoMenu" class="io-btn secondary" style="flex: 1;">MENU</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 100% Victory Screen -->
+    <div id="victoryModal" class="screen-overlay hidden">
+      <div class="io-card" style="max-width: 480px;">
+        <h2 class="io-title" style="color: #f5b018; font-size: 2.6rem;">👑 100% CONQUERED!</h2>
+        <p style="color: #00e5ff; font-weight: 900; margin-top: -10px;">ULTIMATE ARENA DOMINATION</p>
+
+        <div style="background: #f8fafc; border-radius: 20px; padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; text-align: left;">
+          <div><span style="font-size: 0.75rem; font-weight: 800; color: #94a3b8;">WINNING SCORE</span><div id="vicScore" style="font-size: 1.3rem; font-weight: 900; color: #d97706;">0</div></div>
+          <div><span style="font-size: 0.75rem; font-weight: 800; color: #94a3b8;">TERRITORY</span><div class="hud-val" style="font-size: 1.3rem; font-weight: 900; color: #3b82f6;">100.0% 🏆</div></div>
+          <div><span style="font-size: 0.75rem; font-weight: 800; color: #94a3b8;">ELIMINATIONS</span><div id="vicKills" style="font-size: 1.3rem; font-weight: 900; color: #ef4444;">0</div></div>
+        </div>
+
+        <div style="display: flex; gap: 12px; justify-content: center; margin-top: 10px;">
+          <button id="btnVicPlayAgain" class="io-btn success" style="flex: 1;">PLAY AGAIN</button>
+          <button id="btnVicMenu" class="io-btn secondary" style="flex: 1;">MENU</button>
+        </div>
+      </div>
+</body>
+</html>
