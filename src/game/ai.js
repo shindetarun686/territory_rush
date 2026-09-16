@@ -1,6 +1,7 @@
 // src/game/ai.js
 import { ARENA_CENTER, ARENA_RADIUS, CELL_SIZE } from './world.js';
 import { CHARACTER_SKINS } from '../data/skins.js';
+import { drawEntityHeader } from './isoRenderer.js';
 
 export const AI_NAMES = [
   'julia', 'marcelo', 'mohamed', 'lucas', 'sophia', 'alex', 'elena', 'leo', 'emma', 'david'
@@ -61,12 +62,15 @@ export class AIPlayer {
     this.isOutside = (cellOwner !== this.id);
 
     if (!wasOutside && this.isOutside) {
-      this.trail = [{ x: this.x, y: this.y }];
+      const startPt = this.lastInsidePos || { x: this.x, y: this.y };
+      this.trail = [startPt, { x: this.x, y: this.y }];
     } else if (this.isOutside) {
       const last = this.trail[this.trail.length - 1];
       if (!last || Math.hypot(this.x - last.x, this.y - last.y) > 10) {
         this.trail.push({ x: this.x, y: this.y });
       }
+    } else {
+      this.lastInsidePos = { x: this.x, y: this.y };
     }
 
     this.decideMovement(dt, world, player, allAIs);
@@ -172,7 +176,7 @@ export class AIPlayer {
     return bestPos;
   }
 
-  render(ctx, camera) {
+  render(ctx, camera, isLeader = false) {
     if (!this.alive) return;
     const sp = camera.worldToScreen(this.x, this.y);
 
@@ -207,14 +211,9 @@ export class AIPlayer {
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
     ctx.lineWidth = 2 * camera.zoom;
     ctx.strokeRect(-headSize / 2, -headSize / 2, headSize, headSize);
-
-    // Name tag
-    ctx.rotate(-this.angle);
-    ctx.fillStyle = '#1e293b';
-    ctx.font = `800 ${Math.max(10, Math.floor(11 * camera.zoom))}px "Nunito", sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText(this.name, 0, -headSize * 0.7 - 2);
-
     ctx.restore();
+
+    // Name tag & crown
+    drawEntityHeader(ctx, sp.x, sp.y, headSize, this.name, isLeader, camera.zoom);
   }
 }

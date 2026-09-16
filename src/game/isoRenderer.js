@@ -120,3 +120,84 @@ export function drawIsoBlock(ctx, x, y, size = 60, angle = 0, skinId = 'cyan_cub
 
   ctx.restore();
 }
+
+/**
+ * Renders the name tag and (if leader) the golden crown above an entity.
+ * Matches the exact visual styling: pure white bold text with thick dark outline,
+ * and a 3-pointed golden-orange flaring crown for the territory leader.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} sx Screen X of entity center
+ * @param {number} sy Screen Y of entity center
+ * @param {number} headSize Size of the square head in screen pixels
+ * @param {string} name Display name
+ * @param {boolean} isLeader Whether this entity currently holds the #1 territory rank
+ * @param {number} zoom Current camera zoom
+ */
+export function drawEntityHeader(ctx, sx, sy, headSize, name, isLeader = false, zoom = 1) {
+  if (!name) return;
+
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  const fontSize = Math.max(12, Math.round(14 * zoom));
+  const nameY = -headSize * 0.72 - (3 * zoom);
+
+  // 1. Render Golden Crown if Leader
+  if (isLeader) {
+    const crownW = 24 * zoom;
+    const crownH = 14 * zoom;
+    const crownBaseY = nameY - fontSize - (3 * zoom);
+
+    ctx.save();
+    ctx.translate(0, crownBaseY);
+
+    // Crown Gradient (bright yellow at peaks to warm amber-orange at base)
+    const grad = ctx.createLinearGradient(0, -crownH * 1.08, 0, 0);
+    grad.addColorStop(0.0, '#FFEE00');
+    grad.addColorStop(0.35, '#FFDA00');
+    grad.addColorStop(0.7, '#FFAA00');
+    grad.addColorStop(1.0, '#FF8000');
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    // Bottom-left base
+    ctx.moveTo(-crownW * 0.36, 0);
+    // Outer-left flared peak
+    ctx.lineTo(-crownW * 0.5, -crownH * 0.95);
+    // Left inner valley
+    ctx.lineTo(-crownW * 0.17, -crownH * 0.38);
+    // Center tall peak
+    ctx.lineTo(0, -crownH * 1.08);
+    // Right inner valley
+    ctx.lineTo(crownW * 0.17, -crownH * 0.38);
+    // Outer-right flared peak
+    ctx.lineTo(crownW * 0.5, -crownH * 0.95);
+    // Bottom-right base
+    ctx.lineTo(crownW * 0.36, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // 2. Render Name Tag
+  ctx.font = `900 ${fontSize}px "Nunito", "Arial Black", system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+
+  // Dark outline stroke
+  ctx.strokeStyle = '#282828';
+  ctx.lineWidth = Math.max(3, Math.round(3.8 * zoom));
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.miterLimit = 2;
+  ctx.strokeText(name, 0, nameY);
+
+  // Pure white fill
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(name, 0, nameY);
+
+  ctx.restore();
+}
+

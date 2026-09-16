@@ -105,80 +105,115 @@ export class WorldGrid {
     delete this.cellCounts[ownerId];
   }
 
-  // --- Circular Flood Fill Territory Capture ---
+  // --- Connected Components Territory Capture ---
   captureTerritory(ownerId, trailPoints) {
     if (!trailPoints || trailPoints.length < 3) return { captured: 0, total: this.cellCounts[ownerId] || 0, percent: '0.00' };
 
     const trailMask = new Uint8Array(TOTAL_GRID_CELLS);
-    for (let i = 0; i < trailPoints.length - 1; i++) {
-      const p1 = this.worldToGrid(trailPoints[i].x, trailPoints[i].y);
-      const p2 = this.worldToGrid(trailPoints[i + 1].x, trailPoints[i + 1].y);
-
-      let x0 = p1.gx, y0 = p1.gy;
-      const x1 = p2.gx, y1 = p2.gy;
-      const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-      const dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-      let err = dx + dy;
+    
+    // 4-connected Supercover Bresenham
+    const drawLine = (pA, pB) => {
+      const gA = this.worldToGrid(pA.x, pA.y);
+      const gB = this.worldToGrid(pB.x, pB.y);
+      let x = gA.gx, y = gA.gy;
+      const x1 = gB.gx, y1 = gB.gy;
+      const dx = Math.abs(x1 - x), sx = x < x1 ? 1 : -1;
+      const dy = Math.abs(y1 - y), sy = y < y1 ? 1 : -1;
+      let err = dx - dy;
 
       while (true) {
-        const idx = this.coordToIndex(x0, y0);
+        const idx = this.coordToIndex(x, y);
         if (idx !== -1 && this.playableMask[idx]) trailMask[idx] = 1;
-        if (x0 === x1 && y0 === y1) break;
+        if (x === x1 && y === y1) break;
         const e2 = 2 * err;
-        if (e2 >= dy) { err += dy; x0 += sx; }
-        if (e2 <= dx) { err += dx; y0 += sy; }
-      }
-    }
-
-    // Outer BFS starting from all non-playable outer cells & borders
-    const outside = new Uint8Array(TOTAL_GRID_CELLS);
-    const queueX = new Int16Array(TOTAL_GRID_CELLS);
-    const queueY = new Int16Array(TOTAL_GRID_CELLS);
-    let qHead = 0, qTail = 0;
-
-    const pushQueue = (gx, gy) => {
-      const idx = this.coordToIndex(gx, gy);
-      if (idx !== -1 && !outside[idx] && this.grid[idx] !== ownerId && !trailMask[idx]) {
-        outside[idx] = 1;
-        queueX[qTail] = gx;
-        queueY[qTail] = gy;
-        qTail++;
+        if (e2 > -dy && e2 < dx) {
+          const midIdx = this.coordToIndex(x + sx, y);
+          if (midIdx !== -1 && this.playableMask[midIdx]) trailMask[midIdx] = 1;
+          err -= dy; x += sx;
+          err += dx; y += sy;
+        } else {
+          if (e2 > -dy) { err -= dy; x += sx; }
+          if (e2 < dx) { err += dx; y += sy; }
+        }
       }
     };
 
-    // Push all outer border cells and unplayable circular margin cells
-    for (let gy = 0; gy < GRID_ROWS; gy++) {
-      for (let gx = 0; gx < GRID_COLS; gx++) {
-        const idx = gy * GRID_COLS + gx;
-        if (!this.playableMask[idx]) {
-          pushQueue(gx, gy);
-        } else if (gx === 0 || gx === GRID_COLS - 1 || gy === 0 || gy === GRID_ROWS - 1) {
-          pushQueue(gx, gy);
+    for (let i = 0; i < trailPoints.length - 1; i++) {
+      drawLine(trailPoints[i], trailPoints[i + 1]);
+    }
+
+    // Group all unowned non-trail playable cells into connected components
+    const visited = new Uint8Array(TOTAL_GRID_CELLS);
+    const queueX = new Int32Array(TOTAL_GRID_CELLS);
+    const queueY = new Int32Array(TOTAL_GRID_CELLS);
+    const components = [];
+
+    for (let y = 0; y < GRID_ROWS; y++) {
+      for (let x = 0; x < GRID_COLS; x++) {
+        const idx = y * GRID_COLS + x;
+        if (!this.playableMask[idx] || visited[idx] || this.grid[idx] === ownerId || trailMask[idx]) continue;
+
+        let qHead = 0, qTail = 0;
+        queueX[qTail] = x;
+        queueY[qTail] = y;
+        qTail++;
+        visited[idx] = 1;
+
+        const compCells = [idx];
+
+        while (qHead < qTail) {
+          const cx = queueX[qHead];
+          const cy = queueY[qHead];
+          qHead++;
+
+          const neighbors = [
+            { nx: cx - 1, ny: cy },
+            { nx: cx + 1, ny: cy },
+            { nx: cx, ny: cy - 1 },
+            { nx: cx, ny: cy + 1 }
+          ];
+
+          for (const { nx, ny } of neighbors) {
+            const nIdx = this.coordToIndex(nx, ny);
+            if (nIdx !== -1 && this.playableMask[nIdx] && !visited[nIdx] && this.grid[nIdx] !== ownerId && !trailMask[nIdx]) {
+              visited[nIdx] = 1;
+              compCells.push(nIdx);
+              queueX[qTail] = nx;
+              queueY[qTail] = ny;
+              qTail++;
+            }
+          }
+        }
+        components.push(compCells);
+      }
+    }
+
+    let newlyCaptured = 0;
+
+    // The largest component is the outside world; all other components are fully enclosed pockets
+    if (components.length > 1) {
+      components.sort((a, b) => b.length - a.length);
+      for (let c = 1; c < components.length; c++) {
+        const comp = components[c];
+        for (let i = 0; i < comp.length; i++) {
+          const idx = comp[i];
+          const gx = idx % GRID_COLS;
+          const gy = Math.floor(idx / GRID_COLS);
+          if (this.grid[idx] !== ownerId) {
+            this.setCell(gx, gy, ownerId);
+            newlyCaptured++;
+          }
         }
       }
     }
 
-    while (qHead < qTail) {
-      const cx = queueX[qHead];
-      const cy = queueY[qHead];
-      qHead++;
-
-      if (cx > 0) pushQueue(cx - 1, cy);
-      if (cx < GRID_COLS - 1) pushQueue(cx + 1, cy);
-      if (cy > 0) pushQueue(cx, cy - 1);
-      if (cy < GRID_ROWS - 1) pushQueue(cx, cy + 1);
-    }
-
-    let newlyCaptured = 0;
-    for (let y = 0; y < GRID_ROWS; y++) {
-      for (let x = 0; x < GRID_COLS; x++) {
-        const idx = y * GRID_COLS + x;
-        if (this.playableMask[idx] && !outside[idx]) {
-          if (this.grid[idx] !== ownerId) {
-            this.setCell(x, y, ownerId);
-            newlyCaptured++;
-          }
-        }
+    // Convert all trail cells to owned territory
+    for (let idx = 0; idx < TOTAL_GRID_CELLS; idx++) {
+      if (trailMask[idx] && this.playableMask[idx] && this.grid[idx] !== ownerId) {
+        const gx = idx % GRID_COLS;
+        const gy = Math.floor(idx / GRID_COLS);
+        this.setCell(gx, gy, ownerId);
+        newlyCaptured++;
       }
     }
 

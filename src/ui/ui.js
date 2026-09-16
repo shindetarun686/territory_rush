@@ -286,6 +286,11 @@ export class UIManager {
     });
     joystick.addEventListener('pointerup', reset);
     joystick.addEventListener('pointercancel', reset);
+
+    if (this.playerPseudoInput) {
+      this.playerPseudoInput.addEventListener('input', () => this.savePlayerName());
+      this.playerPseudoInput.addEventListener('change', () => this.savePlayerName());
+    }
   }
 
   updateDashboardHeader() {
@@ -298,6 +303,9 @@ export class UIManager {
     const val = this.playerPseudoInput.value.trim() || 'Player';
     storage.data.playerName = val;
     storage.save();
+    if (this.game && this.game.player) {
+      this.game.player.name = val;
+    }
   }
 
   startGame(speedMultiplier = 1.0) {

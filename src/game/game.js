@@ -4,6 +4,7 @@ import { AIPlayer, AI_PERSONALITIES } from './ai.js';
 import { particles } from './particles.js';
 import { audio } from './audio.js';
 import { storage } from './storage.js';
+import { drawEntityHeader } from './isoRenderer.js';
 
 export const GAME_STATES = {
   MENU: 'MENU',
@@ -379,7 +380,8 @@ export class GameManager {
     this.player.isOutside = (cellOwner !== this.player.id);
 
     if (!wasOutside && this.player.isOutside) {
-      this.player.trail = [{ x: this.player.x, y: this.player.y }];
+      const startPt = this.player.lastInsidePos || { x: this.player.x, y: this.player.y };
+      this.player.trail = [startPt, { x: this.player.x, y: this.player.y }];
     } else if (this.player.isOutside) {
       const last = this.player.trail[this.player.trail.length - 1];
       if (!last || Math.hypot(this.player.x - last.x, this.player.y - last.y) > 10) {
@@ -392,29 +394,32 @@ export class GameManager {
         }
         this.player.trail.push({ x: this.player.x, y: this.player.y });
       }
-    } else if (wasOutside && !this.player.isOutside) {
-      this.player.trail.push({ x: this.player.x, y: this.player.y });
-      const res = this.world.captureTerritory(this.player.id, this.player.trail);
+    } else {
+      this.player.lastInsidePos = { x: this.player.x, y: this.player.y };
+      if (wasOutside && !this.player.isOutside) {
+        this.player.trail.push({ x: this.player.x, y: this.player.y });
+        const res = this.world.captureTerritory(this.player.id, this.player.trail);
 
-      if (res.captured > 0) {
-        const basePoints = res.captured * 10;
-        this.score += basePoints;
+        if (res.captured > 0) {
+          const basePoints = res.captured * 10;
+          this.score += basePoints;
 
-        const playerColor = this.getPlayerColor();
-        particles.emitCaptureBorder(this.player.trail, playerColor);
-        particles.addFloatingText(`+${res.percent}%`, this.player.x, this.player.y - 30, playerColor, 24);
+          const playerColor = this.getPlayerColor();
+          particles.emitCaptureBorder(this.player.trail, playerColor);
+          particles.addFloatingText(`+${res.percent}%`, this.player.x, this.player.y - 30, playerColor, 24);
 
-        if (res.captured > 200) audio.playBigCapture();
-        else audio.playCapture(Math.min(1, res.captured / 150));
+          if (res.captured > 200) audio.playBigCapture();
+          else audio.playCapture(Math.min(1, res.captured / 150));
 
-        storage.updateStat('totalCapturedCells', res.captured);
-        storage.updateStat('largestSingleCapture', res.captured, true);
-        storage.updateStat('highestScore', this.score, true);
-        storage.addCoins(Math.floor(res.captured * 0.2));
-        storage.addXp(Math.floor(res.captured * 0.5));
+          storage.updateStat('totalCapturedCells', res.captured);
+          storage.updateStat('largestSingleCapture', res.captured, true);
+          storage.updateStat('highestScore', this.score, true);
+          storage.addCoins(Math.floor(res.captured * 0.2));
+          storage.addXp(Math.floor(res.captured * 0.5));
+        }
+
+        this.player.trail = [];
       }
-
-      this.player.trail = [];
     }
   }
 
@@ -597,14 +602,16 @@ export class GameManager {
     // 3. Render Circular Arena Perimeter Border Ring
     this.renderArenaBorders(spCenter, screenRadius);
 
+    const leaderId = (this.leaderboard && this.leaderboard.length > 0) ? this.leaderboard[0].id : null;
+
     // 4. Render AI entities & exposed trails
     for (const ai of this.ais) {
-      ai.render(this.ctx, this.camera);
+      ai.render(this.ctx, this.camera, ai.id === leaderId);
     }
 
     // 5. Render Player cube & cyan ribbon trail
     if (this.player && this.player.alive) {
-      this.renderPlayer();
+      this.renderPlayer(this.player.id === leaderId);
     }
 
     // 6. Render Particles & Floating Damage/Score Text
@@ -630,7 +637,7 @@ export class GameManager {
     this.ctx.restore();
   }
 
-  renderPlayer() {
+  renderPlayer(isLeader = false) {
     const sp = this.camera.worldToScreen(this.player.x, this.player.y);
     const playerColor = this.getPlayerColor();
 
@@ -667,6 +674,9 @@ export class GameManager {
     this.ctx.strokeRect(-headSize / 2, -headSize / 2, headSize, headSize);
 
     this.ctx.restore();
+
+    // 3. Draw Player Name & Crown
+    drawEntityHeader(this.ctx, sp.x, sp.y, headSize, this.player.name, isLeader, this.camera.zoom);
   }
 
   getPlayerColor() {
