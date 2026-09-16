@@ -83,17 +83,12 @@ export function drawIsoBlock(ctx, x, y, size = 60, angle = 0, skinId = 'cyan_cub
 
   // Specific Skin Decorative Features
   if (skinId === 'cyan_cube' || skinId === 'starter') {
-    // Cardboard roll handle coming out of back
-    ctx.fillStyle = '#d4a373';
-    ctx.fillRect(-12, -isoY - 24, 24, 22);
-
-    // White paper roll strip
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = 'rgba(255,255,255,0.72)';
     ctx.beginPath();
-    ctx.moveTo(0, -isoY - 2);
-    ctx.lineTo(isoX + 16, -isoY * 0.5 + 8);
-    ctx.lineTo(isoX + 12, height - isoY * 0.5 + 4);
-    ctx.lineTo(0, height - 8);
+    ctx.moveTo(-isoX * 0.48, -isoY * 0.62);
+    ctx.lineTo(isoX * 0.18, -isoY * 0.78);
+    ctx.lineTo(isoX * 0.42, -isoY * 0.62);
+    ctx.lineTo(-isoX * 0.22, -isoY * 0.46);
     ctx.closePath();
     ctx.fill();
   } else if (skinId === 'cake') {

@@ -33,6 +33,7 @@ export class WorldGrid {
   reset() {
     this.grid.fill(0);
     this.cellCounts = {};
+    this.paths = null;
   }
 
   coordToIndex(gx, gy) {
@@ -68,6 +69,7 @@ export class WorldGrid {
     if (idx === -1 || !this.playableMask[idx]) return;
     const oldOwner = this.grid[idx];
     if (oldOwner === ownerId) return;
+    this.paths = null;
 
     if (oldOwner > 0) {
       this.cellCounts[oldOwner] = Math.max(0, (this.cellCounts[oldOwner] || 1) - 1);
@@ -94,6 +96,7 @@ export class WorldGrid {
   }
 
   clearOwner(ownerId) {
+    this.paths = null;
     for (let i = 0; i < TOTAL_GRID_CELLS; i++) {
       if (this.grid[i] === ownerId) {
         this.grid[i] = 0;
@@ -201,6 +204,79 @@ export class WorldGrid {
 
   // --- Render Circular Arena and Territories ---
   render(ctx, camera, playerOwnerId = 1, skinType = 'solid', entityColors = {}) {
+    this.renderSmooth(ctx, camera, entityColors);
+  }
+
+  renderSmooth(ctx, camera, entityColors = {}) {
+    if (!this.paths) {
+      this.paths = new Map();
+      const stride = GRID_COLS + 1;
+
+      for (const owner of Object.keys(this.cellCounts).map(Number)) {
+        const edges = new Map();
+        const add = (x1, y1, x2, y2) => {
+          const key = y1 * stride + x1;
+          if (!edges.has(key)) edges.set(key, []);
+          edges.get(key).push(y2 * stride + x2);
+        };
+
+        for (let y = 0; y < GRID_ROWS; y++) {
+          for (let x = 0; x < GRID_COLS; x++) {
+            if (this.getCell(x, y) !== owner) continue;
+            if (this.getCell(x, y - 1) !== owner) add(x, y, x + 1, y);
+            if (this.getCell(x + 1, y) !== owner) add(x + 1, y, x + 1, y + 1);
+            if (this.getCell(x, y + 1) !== owner) add(x + 1, y + 1, x, y + 1);
+            if (this.getCell(x - 1, y) !== owner) add(x, y + 1, x, y);
+          }
+        }
+
+        const path = new Path2D();
+        while (edges.size) {
+          const start = edges.keys().next().value;
+          const points = [];
+          let key = start;
+          let guard = 0;
+
+          do {
+            points.push({
+              x: (key % stride) * CELL_SIZE,
+              y: Math.floor(key / stride) * CELL_SIZE
+            });
+            const next = edges.get(key);
+            if (!next || !next.length) break;
+            const end = next.pop();
+            if (!next.length) edges.delete(key);
+            key = end;
+            guard++;
+          } while (key !== start && guard < TOTAL_GRID_CELLS);
+
+          if (points.length < 3) continue;
+          const last = points[points.length - 1];
+          path.moveTo((last.x + points[0].x) / 2, (last.y + points[0].y) / 2);
+          points.forEach((point, index) => {
+            const next = points[(index + 1) % points.length];
+            path.quadraticCurveTo(point.x, point.y, (point.x + next.x) / 2, (point.y + next.y) / 2);
+          });
+          path.closePath();
+        }
+        this.paths.set(owner, path);
+      }
+    }
+
+    ctx.save();
+    ctx.translate(ctx.canvas.clientWidth / 2 - camera.x * camera.zoom, ctx.canvas.clientHeight / 2 - camera.y * camera.zoom);
+    ctx.scale(camera.zoom, camera.zoom);
+    for (const [owner, path] of this.paths) {
+      ctx.fillStyle = entityColors[owner] || (owner === 1 ? '#00f0ff' : '#ff4757');
+      ctx.fill(path, 'evenodd');
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.lineWidth = 2 / camera.zoom;
+      ctx.stroke(path);
+    }
+    ctx.restore();
+  }
+
+  renderCells(ctx, camera, playerOwnerId = 1, skinType = 'solid', entityColors = {}) {
     const minWorldX = camera.x - (ctx.canvas.width / 2) / camera.zoom;
     const maxWorldX = camera.x + (ctx.canvas.width / 2) / camera.zoom;
     const minWorldY = camera.y - (ctx.canvas.height / 2) / camera.zoom;

@@ -14,6 +14,15 @@ export const GAME_STATES = {
 };
 
 const TARGET_AI_COUNT = 7;
+const PLAYER_COLOR = '#ef4444';
+const PLAYER_SKIN_COLORS = {
+  starter: '#ef4444',
+  cyan_cube: '#ef4444',
+  cake: '#fb7185',
+  rhino: '#94a3b8',
+  mouse: '#e5e7eb',
+  gold: '#facc15'
+};
 
 export const BOT_CONFIGS = [
   { name: 'matilda', color: '#ff7597', pillBg: '#ff7597' },
@@ -42,16 +51,16 @@ export class GameManager {
       zoom: 1.15,
       shake: 0,
       worldToScreen: (wx, wy) => {
-        const cx = this.canvas.width / 2;
-        const cy = this.canvas.height / 2;
+        const cx = this.getViewportWidth() / 2;
+        const cy = this.getViewportHeight() / 2;
         return {
           x: cx + (wx - this.camera.x) * this.camera.zoom,
           y: cy + (wy - this.camera.y) * this.camera.zoom
         };
       },
       screenToWorld: (sx, sy) => {
-        const cx = this.canvas.width / 2;
-        const cy = this.canvas.height / 2;
+        const cx = this.getViewportWidth() / 2;
+        const cy = this.getViewportHeight() / 2;
         return {
           wx: this.camera.x + (sx - cx) / this.camera.zoom,
           wy: this.camera.y + (sy - cy) / this.camera.zoom
@@ -107,6 +116,14 @@ export class GameManager {
     this.joystickVector = { x: vx, y: vy };
   }
 
+  getViewportWidth() {
+    return this.canvas.clientWidth || window.innerWidth;
+  }
+
+  getViewportHeight() {
+    return this.canvas.clientHeight || window.innerHeight;
+  }
+
   startMatch(speedMultiplier = 1.0) {
     this.state = GAME_STATES.PLAYING;
     this.world.reset();
@@ -121,11 +138,10 @@ export class GameManager {
     this.nextAiId = 2;
     this.bestPercent = Math.max(0.4, storage.data.stats.maxTerritoryPercent || 0.4);
 
-    // Spawn player inside the circular arena
-    const spawnAngle = Math.random() * Math.PI * 2;
-    const spawnDist = 400 + Math.random() * 600;
-    const startX = ARENA_CENTER + Math.cos(spawnAngle) * spawnDist;
-    const startY = ARENA_CENTER + Math.sin(spawnAngle) * spawnDist;
+    // Spawn player in open space inside the circular arena.
+    const playerSpawn = this.findOpenSpawnPoint({ avoidPlayer: false, territoryRadiusCells: 6 });
+    const startX = playerSpawn.x;
+    const startY = playerSpawn.y;
 
     const baseSpeed = 240 * speedMultiplier;
 
@@ -168,21 +184,9 @@ export class GameManager {
 
     const cfg = BOT_CONFIGS[this.nextAiId % BOT_CONFIGS.length];
     const id = this.nextAiId++;
-
-    let ax = ARENA_CENTER, ay = ARENA_CENTER;
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 300 + Math.random() * (ARENA_RADIUS - 600);
-      const rx = ARENA_CENTER + Math.cos(angle) * dist;
-      const ry = ARENA_CENTER + Math.sin(angle) * dist;
-
-      if (!this.player || Math.hypot(rx - this.player.x, ry - this.player.y) > 500) {
-        if (this.world.isCellOwnedByPlayer(rx, ry)) { continue; }
-        ax = rx;
-        ay = ry;
-        break;
-      }
-    }
+    const spawn = this.findOpenSpawnPoint({ avoidPlayer: true, territoryRadiusCells: 5 });
+    const ax = spawn.x;
+    const ay = spawn.y;
 
     const ai = new AIPlayer({
       id,
@@ -197,6 +201,55 @@ export class GameManager {
 
     this.world.spawnInitialTerritory(ai.id, ax, ay, 5);
     this.ais.push(ai);
+  }
+
+  findOpenSpawnPoint({ avoidPlayer = true, territoryRadiusCells = 5 } = {}) {
+    const minPlayerDistance = 520;
+    const spawnMargin = 180;
+
+    for (let attempt = 0; attempt < 160; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 280 + Math.random() * Math.max(100, ARENA_RADIUS - spawnMargin - 280);
+      const x = ARENA_CENTER + Math.cos(angle) * dist;
+      const y = ARENA_CENTER + Math.sin(angle) * dist;
+
+      if (avoidPlayer && this.player && Math.hypot(x - this.player.x, y - this.player.y) < minPlayerDistance) {
+        continue;
+      }
+
+      if (this.isSpawnAreaOpen(x, y, territoryRadiusCells)) {
+        return { x, y };
+      }
+    }
+
+    // Deterministic fallback scans from center outward and still requires empty territory.
+    for (let ring = 0; ring < 10; ring++) {
+      const dist = 260 + ring * 140;
+      for (let step = 0; step < 24; step++) {
+        const angle = (Math.PI * 2 * step) / 24 + ring * 0.37;
+        const x = ARENA_CENTER + Math.cos(angle) * dist;
+        const y = ARENA_CENTER + Math.sin(angle) * dist;
+        if ((!avoidPlayer || !this.player || Math.hypot(x - this.player.x, y - this.player.y) >= minPlayerDistance) &&
+          this.isSpawnAreaOpen(x, y, territoryRadiusCells)) {
+          return { x, y };
+        }
+      }
+    }
+
+    return { x: ARENA_CENTER, y: ARENA_CENTER };
+  }
+
+  isSpawnAreaOpen(x, y, radiusCells = 5) {
+    if (!this.world.isInsideCircle(x, y, CELL_SIZE * (radiusCells + 2))) return false;
+
+    const { gx: cx, gy: cy } = this.world.worldToGrid(x, y);
+    for (let dy = -radiusCells; dy <= radiusCells; dy++) {
+      for (let dx = -radiusCells; dx <= radiusCells; dx++) {
+        if (dx * dx + dy * dy > radiusCells * radiusCells) continue;
+        if (this.world.getCell(cx + dx, cy + dy) !== 0) return false;
+      }
+    }
+    return true;
   }
 
   pause() {
@@ -276,8 +329,8 @@ export class GameManager {
   }
 
   updatePlayerMovement(dt) {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
+    const cx = this.getViewportWidth() / 2;
+    const cy = this.getViewportHeight() / 2;
     const mouseDx = this.mouseScreenPos.x - cx;
     const mouseDy = this.mouseScreenPos.y - cy;
     const mouseDist = Math.hypot(mouseDx, mouseDy);
@@ -310,7 +363,7 @@ export class GameManager {
 
     // --- Circular Arena Boundary Constraint ---
     const distFromCenter = Math.hypot(this.player.x - ARENA_CENTER, this.player.y - ARENA_CENTER);
-    const maxRadius = ARENA_RADIUS - 18;
+    const maxRadius = ARENA_RADIUS - Math.max(6, this.player.radius * 0.35);
 
     if (distFromCenter > maxRadius) {
       const angle = Math.atan2(this.player.y - ARENA_CENTER, this.player.x - ARENA_CENTER);
@@ -347,8 +400,9 @@ export class GameManager {
         const basePoints = res.captured * 10;
         this.score += basePoints;
 
-        particles.emitCaptureBorder(this.player.trail, '#00f0ff');
-        particles.addFloatingText(`+${res.percent}%`, this.player.x, this.player.y - 30, '#00f0ff', 24);
+        const playerColor = this.getPlayerColor();
+        particles.emitCaptureBorder(this.player.trail, playerColor);
+        particles.addFloatingText(`+${res.percent}%`, this.player.x, this.player.y - 30, playerColor, 24);
 
         if (res.captured > 200) audio.playBigCapture();
         else audio.playCapture(Math.min(1, res.captured / 150));
@@ -490,7 +544,7 @@ export class GameManager {
       const pct = parseFloat(this.world.getOwnerPercent(this.player.id));
       this.territoryPercent = pct.toFixed(2);
       if (pct > this.bestPercent) this.bestPercent = pct;
-      list.push({ id: 1, name: this.player.name, percent: pct, score: this.score, isPlayer: true, pillBg: '#06b6d4' });
+      list.push({ id: 1, name: this.player.name, percent: pct, score: this.score, isPlayer: true, pillBg: this.getPlayerColor() });
     }
     for (const ai of this.ais) {
       if (ai.alive) {
@@ -508,7 +562,8 @@ export class GameManager {
   }
 
   render() {
-    const { width, height } = this.canvas;
+    const width = this.getViewportWidth();
+    const height = this.getViewportHeight();
 
     this.ctx.save();
     if (this.camera.shake > 0) {
@@ -533,7 +588,7 @@ export class GameManager {
     this.ctx.clip(); // Clip all territory rendering inside circular arena
 
     // 2. Render Captured Territories
-    const entityColors = { 1: '#00f0ff' };
+    const entityColors = { 1: this.getPlayerColor() };
     this.ais.forEach(ai => { entityColors[ai.id] = ai.color; });
     this.world.render(this.ctx, this.camera, 1, 'solid', entityColors);
 
@@ -547,7 +602,7 @@ export class GameManager {
       ai.render(this.ctx, this.camera);
     }
 
-    // 5. Render Player 3D Paint Roller & Cyan Ribbon Trail
+    // 5. Render Player cube & cyan ribbon trail
     if (this.player && this.player.alive) {
       this.renderPlayer();
     }
@@ -577,12 +632,13 @@ export class GameManager {
 
   renderPlayer() {
     const sp = this.camera.worldToScreen(this.player.x, this.player.y);
+    const playerColor = this.getPlayerColor();
 
-    // 1. Draw Cyan Paint Ribbon Trail
+    // 1. Draw Cyan Ribbon Trail
     if (this.player.isOutside && this.player.trail.length > 1) {
       this.ctx.save();
-      this.ctx.strokeStyle = '#00f0ff';
-      this.ctx.lineWidth = 26 * this.camera.zoom;
+      this.ctx.strokeStyle = playerColor;
+      this.ctx.lineWidth = 20 * this.camera.zoom;
       this.ctx.lineCap = 'square';
       this.ctx.lineJoin = 'miter';
       this.ctx.beginPath();
@@ -597,42 +653,23 @@ export class GameManager {
       this.ctx.restore();
     }
 
-    // 2. Draw 3D Paint Roller Body
+    // 2. Draw player in the same square style as AI, with a distinct color
     this.ctx.save();
     this.ctx.translate(sp.x, sp.y);
     this.ctx.rotate(this.player.angle);
 
-    const zoom = this.camera.zoom;
+    const headSize = 24 * this.camera.zoom;
+    this.ctx.fillStyle = playerColor;
+    this.ctx.fillRect(-headSize / 2, -headSize / 2, headSize, headSize);
 
-    // Metal Arm
-    this.ctx.strokeStyle = '#e2e8f0';
-    this.ctx.lineWidth = 3.5 * zoom;
-    this.ctx.lineCap = 'round';
-    this.ctx.lineJoin = 'round';
-    this.ctx.beginPath();
-    this.ctx.moveTo(0, -12 * zoom);
-    this.ctx.lineTo(-14 * zoom, -12 * zoom);
-    this.ctx.lineTo(-14 * zoom, 0);
-    this.ctx.lineTo(-24 * zoom, 0);
-    this.ctx.stroke();
-
-    // Wooden Handle
-    this.ctx.fillStyle = '#b08968';
-    this.ctx.fillRect(-34 * zoom, -3.5 * zoom, 12 * zoom, 7 * zoom);
-
-    // Roller Cylinder
-    const rW = 16 * zoom;
-    const rH = 26 * zoom;
-
-    this.ctx.fillStyle = '#00e5ff';
-    this.ctx.fillRect(-rW / 2, -rH / 2, rW, rH);
-
-    this.ctx.fillStyle = '#67e8f9';
-    this.ctx.fillRect(-rW / 2, -rH / 2, rW, 4 * zoom);
-
-    this.ctx.fillStyle = '#0891b2';
-    this.ctx.fillRect(rW / 2 - 3 * zoom, -rH / 2, 3 * zoom, rH);
+    this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+    this.ctx.lineWidth = 2 * this.camera.zoom;
+    this.ctx.strokeRect(-headSize / 2, -headSize / 2, headSize, headSize);
 
     this.ctx.restore();
+  }
+
+  getPlayerColor() {
+    return PLAYER_SKIN_COLORS[this.player?.skinId] || PLAYER_COLOR;
   }
 }

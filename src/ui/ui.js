@@ -7,7 +7,7 @@ import { ARENA_RADIUS, ARENA_CENTER, CELL_SIZE, GRID_COLS, GRID_ROWS } from '../
 
 
 export const SCORE_SKINS = [
-  { id: 'cyan_cube', name: 'Paint Roller', scoreRequired: 0, desc: 'Default Starter Skin', skinId: 'cyan_cube' },
+  { id: 'cyan_cube', name: 'Blue Cube', scoreRequired: 0, desc: 'Default Starter Skin', skinId: 'cyan_cube' },
   { id: 'cake', name: 'Strawberry Cake', scoreRequired: 2000, desc: 'Score 2,000 Points', skinId: 'cake' },
   { id: 'rhino', name: 'Rhinoceros', scoreRequired: 5000, desc: 'Score 5,000 Points', skinId: 'rhino' },
   { id: 'mouse', name: 'Origami Mouse', scoreRequired: 10000, desc: 'Score 10,000 Points', skinId: 'mouse' },
@@ -20,6 +20,7 @@ export class UIManager {
     this.selectedCarouselIndex = 0;
     this.previewAngle = 0;
     this.selectedMode = 'CLASSIC';
+    this.tipHideAt = 0;
 
     this.initElements();
     this.bindEvents();
@@ -122,6 +123,7 @@ export class UIManager {
         const highScore = storage.data.stats.highestScore || 0;
 
         if (highScore >= chosen.scoreRequired) {
+          storage.unlockItem('character', chosen.skinId);
           storage.equipItem('character', chosen.skinId);
           this.skinSelectionScreen.style.display = 'none';
           this.skinSelectionScreen.classList.add('hidden');
@@ -232,6 +234,58 @@ export class UIManager {
         this.savePlayerName();
       };
     }
+
+    this.bindVirtualJoystick();
+  }
+
+  bindVirtualJoystick() {
+    const joystick = document.getElementById('virtualJoystick');
+    const knob = document.getElementById('joystickKnob');
+    if (!joystick || !knob) return;
+
+    const updateVisibility = () => {
+      joystick.style.display = window.matchMedia('(pointer: coarse), (max-width: 768px)').matches ? 'block' : 'none';
+    };
+    updateVisibility();
+    window.addEventListener('resize', updateVisibility);
+
+    let activePointerId = null;
+    const max = 42;
+
+    const setVector = (clientX, clientY) => {
+      const rect = joystick.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = clientX - cx;
+      const dy = clientY - cy;
+      const len = Math.hypot(dx, dy) || 1;
+      const clamped = Math.min(max, len);
+      const nx = dx / len;
+      const ny = dy / len;
+      knob.style.transform = `translate(${nx * clamped}px, ${ny * clamped}px)`;
+      this.game.setJoystickVector(nx * Math.min(1, len / max), ny * Math.min(1, len / max));
+    };
+
+    const reset = () => {
+      activePointerId = null;
+      knob.style.transform = 'translate(0, 0)';
+      this.game.setJoystickVector(0, 0);
+    };
+
+    joystick.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      activePointerId = e.pointerId;
+      joystick.setPointerCapture(e.pointerId);
+      setVector(e.clientX, e.clientY);
+    });
+    joystick.addEventListener('pointermove', (e) => {
+      if (e.pointerId === activePointerId) {
+        e.preventDefault();
+        setVector(e.clientX, e.clientY);
+      }
+    });
+    joystick.addEventListener('pointerup', reset);
+    joystick.addEventListener('pointercancel', reset);
   }
 
   updateDashboardHeader() {
@@ -261,6 +315,10 @@ export class UIManager {
     }
 
     this.hud.style.display = 'flex';
+    if (this.hudCenterTip) {
+      this.tipHideAt = performance.now() + 5000;
+      this.hudCenterTip.classList.remove('tip-hidden');
+    }
     this.game.startMatch(speedMultiplier);
   }
 
@@ -289,8 +347,64 @@ export class UIManager {
         this.previewAngle += 0.025;
         this.previewCtx.clearRect(0, 0, 260, 260);
 
+        const ctx = this.previewCtx;
+        ctx.save();
+        ctx.translate(130, 132);
+
+        const pulse = 0.5 + Math.sin(this.previewAngle * 2) * 0.5;
+
+        const floorGradient = ctx.createRadialGradient(0, 54, 8, 0, 54, 105);
+        floorGradient.addColorStop(0, 'rgba(34, 211, 238, 0.42)');
+        floorGradient.addColorStop(0.48, 'rgba(168, 85, 247, 0.18)');
+        floorGradient.addColorStop(1, 'rgba(34, 211, 238, 0)');
+        ctx.fillStyle = floorGradient;
+        ctx.beginPath();
+        ctx.ellipse(0, 54, 106, 34, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 4; i++) {
+          const radiusX = 58 + i * 16 + pulse * 5;
+          const radiusY = 18 + i * 6 + pulse * 2;
+          ctx.strokeStyle = i % 2 === 0 ? 'rgba(34, 211, 238, 0.42)' : 'rgba(236, 72, 153, 0.34)';
+          ctx.beginPath();
+          ctx.ellipse(0, 54, radiusX, radiusY, this.previewAngle * 0.2, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.strokeStyle = 'rgba(148, 244, 255, 0.26)';
+        ctx.lineWidth = 1;
+        for (let x = -96; x <= 96; x += 24) {
+          ctx.beginPath();
+          ctx.moveTo(x, -92);
+          ctx.lineTo(x * 0.46, 68);
+          ctx.stroke();
+        }
+        for (let y = -72; y <= 54; y += 18) {
+          ctx.beginPath();
+          ctx.moveTo(-100, y);
+          ctx.lineTo(100, y);
+          ctx.stroke();
+        }
+
+        ctx.strokeStyle = 'rgba(34, 211, 238, 0.72)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, -6, 78 + pulse * 4, -0.25, Math.PI * 1.25);
+        ctx.stroke();
+
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = '#67e8f9';
+        for (let y = 16; y < 248; y += 10) {
+          ctx.fillRect(36, y, 188, 1);
+        }
+        ctx.restore();
+
         const chosenSkin = storage.data.equipped.character || 'cyan_cube';
-        drawIsoBlock(this.previewCtx, 130, 140, 70, this.previewAngle, chosenSkin);
+        drawIsoBlock(ctx, 130, 112, 58, this.previewAngle, chosenSkin);
       }
       requestAnimationFrame(animate);
     };
@@ -367,8 +481,8 @@ export class UIManager {
     this.hudBest.innerText = `Best ${this.game.bestPercent}%`;
     this.hudKills.innerText = `x${this.game.eliminations}`;
 
-    if (this.game.score > 1500 && this.hudCenterTip) {
-      this.hudCenterTip.style.opacity = '0.3';
+    if (this.hudCenterTip && performance.now() >= this.tipHideAt) {
+      this.hudCenterTip.classList.add('tip-hidden');
     }
 
     if (this.game.leaderboard) {
@@ -404,7 +518,14 @@ export class UIManager {
   updateMiniMap(game) {
     const canvas = this.minimapCanvas;
     const ctx = this.minimapCtx;
-    const size = canvas.width = canvas.height = 150; // 150x150px
+    const displaySize = Math.round(canvas.getBoundingClientRect().width || 150);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (canvas.width !== displaySize * dpr || canvas.height !== displaySize * dpr) {
+      canvas.width = displaySize * dpr;
+      canvas.height = displaySize * dpr;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const size = displaySize;
     ctx.clearRect(0, 0, size, size);
 
     // Scale world coordinates to minimap

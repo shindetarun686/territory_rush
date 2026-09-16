@@ -1,5 +1,5 @@
 // src/game/ai.js
-import { WORLD_SIZE, CELL_SIZE } from './world.js';
+import { ARENA_CENTER, ARENA_RADIUS, CELL_SIZE } from './world.js';
 import { CHARACTER_SKINS } from '../data/skins.js';
 
 export const AI_NAMES = [
@@ -74,11 +74,14 @@ export class AIPlayer {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
 
-    const margin = 30;
-    if (this.x < margin) { this.x = margin; this.vx = Math.abs(this.vx); }
-    if (this.x > WORLD_SIZE - margin) { this.x = WORLD_SIZE - margin; this.vx = -Math.abs(this.vx); }
-    if (this.y < margin) { this.y = margin; this.vy = Math.abs(this.vy); }
-    if (this.y > WORLD_SIZE - margin) { this.y = WORLD_SIZE - margin; this.vy = -Math.abs(this.vy); }
+    const maxRadius = ARENA_RADIUS - Math.max(8, this.radius * 0.45);
+    const distFromCenter = Math.hypot(this.x - ARENA_CENTER, this.y - ARENA_CENTER);
+    if (distFromCenter > maxRadius) {
+      const angleFromCenter = Math.atan2(this.y - ARENA_CENTER, this.x - ARENA_CENTER);
+      this.x = ARENA_CENTER + Math.cos(angleFromCenter) * maxRadius;
+      this.y = ARENA_CENTER + Math.sin(angleFromCenter) * maxRadius;
+      this.steerTowards(ARENA_CENTER, ARENA_CENTER);
+    }
 
     this.angle = Math.atan2(this.vy, this.vx);
   }
